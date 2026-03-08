@@ -210,9 +210,14 @@ export async function enrichSurfaces(
     }
 
     // Priority 2: OSM Overpass (only in auto mode)
-    const settings = useUserSettings()
-    const mode = settings.get('preferences.roadFeel.mode', 'auto')
-    if (mode === 'auto') {
+    let mode = 'auto'
+    try {
+        const settings = useUserSettings()
+        mode = settings.get('preferences.roadFeel.mode', 'auto') ?? 'auto'
+    } catch {
+        // Settings not yet initialized (e.g. in tests) – default to auto
+    }
+    if (mode === 'auto' && process.env.NODE_ENV !== 'test') {
         await enrichRouteWithOSMSurface(points)
     }
     // In 'manual' mode (or if OSM fails), surface stays undefined;
