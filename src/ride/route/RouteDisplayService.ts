@@ -19,13 +19,14 @@ const MAX_INACTIVITY = 5000
 export class RouteDisplayService extends RideModeService {
     protected prevRequestSlope: number
 
-    protected position: CurrentPosition    
+    protected position: CurrentPosition
     protected sideViews: SideViewsShown
     protected currentRoute: Route
 
-    protected hasNearbyRides: boolean  = false 
+    protected hasNearbyRides: boolean  = false
     protected prevRequestedSlope:undefined = undefined
     protected prevPowerTs: number
+    protected prevSurface: string | undefined
 
     protected nearbyRiders: ActiveRideListDisplayItem[]
     protected _startSettings: RouteSettings
@@ -87,7 +88,15 @@ export class RouteDisplayService extends RideModeService {
                 if (this.position.lap !== prevPosition.lap) {
                     this.logEvent({message:'lap completed update', lap:prevPosition.lap  })
                     this.emit('lap-completed',prevPosition.lap,this.position.lap)
-                }        
+                }
+
+                // Emit surface-change whenever the road surface changes
+                const newSurface = (this.position as any).surface as string | undefined
+                if (newSurface !== this.prevSurface) {
+                    this.prevSurface = newSurface
+                    this.emit('surface-change', newSurface)
+                }
+
                 this.savePosition()
             }
 
@@ -123,7 +132,11 @@ export class RouteDisplayService extends RideModeService {
         try {
             this.prepareActiveRides()
             this.sendUpdate(this.buildRequest())
-            
+
+            // Emit initial surface so the trainer is set at ride start
+            const initialSurface = (this.position as any)?.surface as string | undefined
+            this.prevSurface = initialSurface
+            this.emit('surface-change', initialSurface)
         }
         catch(err) {
             this.logError(err,'onStarted')

@@ -3,6 +3,7 @@ import { num } from "../../../utils/math";
 import { valid } from "../../../utils/valid";
 import { RouteInfo, RoutePoint } from "../types"
 import { checkIsLoop, getRouteHash } from "../utils/route"
+import { enrichSurfaces } from "../utils/surface"
 import { XMLParser, XmlParserContext } from "./xml"
 
 
@@ -283,6 +284,9 @@ export class GPXParser extends XMLParser {
             isLoop,
             previewUrl: undefined    
         }
+
+        // Enrich points with surface data (companion CSV → OSM → undefined)
+        await enrichSurfaces(route.points, context.fileInfo)
 
         this.addHeadings(route.points,isLoop)
         return info

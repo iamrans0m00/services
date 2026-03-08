@@ -81,6 +81,7 @@ export interface RoutePoint extends LatLng {
     videoSpeed?:number,
     videoTime?:number
     isCut?:boolean
+    surface?:string
 };
 
 export interface VideoRoutePoint extends RoutePoint {
@@ -149,4 +150,3 @@ export interface Parser<In, Out extends RouteBase> {
 export interface AppStatus {
     isOnline?: boolean;
 }
-
