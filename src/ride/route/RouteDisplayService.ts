@@ -91,7 +91,7 @@ export class RouteDisplayService extends RideModeService {
                 }
 
                 // Emit surface-change whenever the road surface changes
-                const newSurface = (this.position as any).surface as string | undefined
+                const newSurface = (this.position as CurrentPosition & {surface?: string}).surface
                 if (newSurface !== this.prevSurface) {
                     this.prevSurface = newSurface
                     this.emit('surface-change', newSurface)
@@ -134,7 +134,7 @@ export class RouteDisplayService extends RideModeService {
             this.sendUpdate(this.buildRequest())
 
             // Emit initial surface so the trainer is set at ride start
-            const initialSurface = (this.position as any)?.surface as string | undefined
+            const initialSurface = (this.position as CurrentPosition & {surface?: string})?.surface
             this.prevSurface = initialSurface
             this.emit('surface-change', initialSurface)
         }

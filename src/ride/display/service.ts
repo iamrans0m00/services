@@ -62,6 +62,7 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
 
             this.displayService.on('lap-completed',this.onLapCompleted.bind(this))
             this.displayService.on('route-completed',this.onRouteCompleted.bind(this))
+            this.displayService.on('surface-change',(surface:string|undefined)=>{ this.observer?.emit('surface-change',surface) })
             this.hideAll = false
             
 

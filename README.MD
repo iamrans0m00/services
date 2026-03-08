@@ -27,3 +27,24 @@ The following Services are currently implemented in this library:
 - [DeviceAccess](./doc/classes/DeviceAccessService.md): manages the basic communication to the device (setting up interfacs, scanning,... )
 - [Device](./src/devices/device/README.MD): allows the Front-End to communicate with a device (reading, writing data)
 - [DevicePairing](./doc/classes/DevicePairingService.md): implements the business logic og the DevicePairing screens
+
+---
+
+## Fork additions (iamrans0m00/services)
+
+### Road Feel – surface-change event
+
+`RouteDisplayService` (`src/ride/route/RouteDisplayService.ts`) emits a `'surface-change'` event
+whenever the route surface changes at the current position, and once at ride start with the initial surface.
+
+`RideDisplayService` (`src/ride/display/service.ts`) forwards this event through its `Observer` so
+React components can subscribe without reaching into internal services:
+
+```typescript
+const observer = useRideDisplay().getObserver()
+observer.on('surface-change', (surfaceName?: string) => {
+    // surfaceName is a RoadFeelSurface key, e.g. 'Road', 'Gravel', 'Ice'
+})
+```
+
+The `useRoadFeel()` hook in `incyclist-web-ui` uses this to drive Tacx Neo road feel commands.
