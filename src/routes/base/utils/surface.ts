@@ -168,12 +168,17 @@ export async function enrichRouteWithOSMSurface(points: RoutePoint[]): Promise<v
         + '(' + south + ',' + west + ',' + north + ',' + east + ');'
         + 'out geom;'
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8_000)
+
     try {
         const resp = await fetch(OSM_OVERPASS_URL, {
             method: 'POST',
             body: 'data=' + encodeURIComponent(query),
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            signal: controller.signal,
         })
+        clearTimeout(timeoutId)
         if (!resp.ok) return
 
         const json = await resp.json()
@@ -188,7 +193,9 @@ export async function enrichRouteWithOSMSurface(points: RoutePoint[]): Promise<v
             }
         }
     } catch {
-        // Overpass unavailable or network error — silently ignore
+        // Overpass unavailable, network error, or timeout — silently ignore
+    } finally {
+        clearTimeout(timeoutId)
     }
 }
 
