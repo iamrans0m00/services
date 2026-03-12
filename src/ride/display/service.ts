@@ -560,6 +560,10 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
         return route?.description?.hasVideo ? 'Video' : 'GPX'
     }
 
+    getDisplayService(): IRideModeService {
+        return this.displayService
+    }
+
     getRideModeService(overwrite?:boolean):IRideModeService {
         if (this.displayService && !overwrite)    
             return this.displayService

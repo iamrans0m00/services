@@ -91,7 +91,7 @@ export class RouteDisplayService extends RideModeService {
                 }
 
                 // Emit surface-change whenever the road surface changes
-                const newSurface = (this.position as CurrentPosition & {surface?: string}).surface
+                const newSurface = this.position.surface
                 if (newSurface !== this.prevSurface) {
                     this.prevSurface = newSurface
                     this.emit('surface-change', newSurface)
@@ -134,7 +134,7 @@ export class RouteDisplayService extends RideModeService {
             this.sendUpdate(this.buildRequest())
 
             // Emit initial surface so the trainer is set at ride start
-            const initialSurface = (this.position as CurrentPosition & {surface?: string})?.surface
+            const initialSurface = this.position?.surface
             this.prevSurface = initialSurface
             this.emit('surface-change', initialSurface)
         }
@@ -338,6 +338,14 @@ export class RouteDisplayService extends RideModeService {
         catch(err) {
             this.logError(err,'setInitialPosition',{cntPoints:this.getCurrentRoute()?.points?.length,routeDistance:this.startSettings?.startPos??0 })
         }
+    }
+
+    /**
+     * Inject a position update for diagnostic/test purposes.
+     * Triggers the same surface-change detection as a real ride.
+     */
+    injectPosition(routeDistance: number): void {
+        this.updatePosition({ routeDistance } as any)
     }
 
     protected  updatePosition(activityPos:ActivityUpdate): CurrentPosition {
