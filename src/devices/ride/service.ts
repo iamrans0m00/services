@@ -1498,7 +1498,7 @@ export class DeviceRideService  extends IncyclistService{
 
         await this.waitForUpdateFinish()
 
-        if (request.gearDelta) {
+        if (request.gearDelta || request.frontDelta) {
             
             const t = targets[0]
             const gearStr = t?.adapter?.getCyclingMode().getData().gearStr
