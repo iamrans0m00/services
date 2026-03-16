@@ -1485,20 +1485,22 @@ export class DeviceRideService  extends IncyclistService{
             }
         }        
 
+        const hadGearChange = request.gearDelta !== undefined || request.frontDelta !== undefined;
+
         this.promiseSendUpdate = []
         targets?.forEach(ai=> {
             this.promiseSendUpdate.push( ai.adapter.sendUpdate(request) )
         })
 
         if (!request.targetPowerDelta) {
-            this.prevUpdate = request              
+            this.prevUpdate = request
         }
 
 
 
         await this.waitForUpdateFinish()
 
-        if (request.gearDelta || request.frontDelta) {
+        if (hadGearChange) {
             
             const t = targets[0]
             const gearStr = t?.adapter?.getCyclingMode().getData().gearStr
