@@ -560,10 +560,6 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
         return route?.description?.hasVideo ? 'Video' : 'GPX'
     }
 
-    getDisplayService(): IRideModeService {
-        return this.displayService
-    }
-
     getRideModeService(overwrite?:boolean):IRideModeService {
         if (this.displayService && !overwrite)    
             return this.displayService
@@ -762,7 +758,7 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
         try {
             if (this.getWorkoutRide().inUse()) {
                 const inc = large ? 5:1
-                if (increase) this.getWorkoutRide().powerUp(inc) 
+                if (increase) this.getWorkoutRide().powerUp(inc)
                     else  this.getWorkoutRide().powerDown(inc)
             }
             else {
@@ -773,7 +769,17 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
         }
         catch(err) {
             this.logError(err,'adjustPower')
-        }        
+        }
+    }
+
+    adjustFrontGear(increase:boolean) {
+        try {
+            const delta = increase ? 1 : -1;
+            this.deviceFrontShift(delta);
+        }
+        catch(err) {
+            this.logError(err,'adjustFrontGear')
+        }
     }
 
 
@@ -1063,6 +1069,17 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
         devices.off( 'cycling-mode-toggle', h.toggleCyclingModeHandler)
 
         delete this.startDeviceHandlers        
+    }
+
+    protected deviceFrontShift(delta:number) {
+        const device = this.getDeviceRide().getControlAdapter()
+        if (!device)
+            return;
+
+        const mode = this.getDeviceRide().getCyclingMode(device.udid) as CyclingMode;
+        if (mode.isSIM()) {
+            this.getRideModeService().sendUpdate({frontDelta:delta})
+        }
     }
 
     protected devicePowerUp(inc:number) {
