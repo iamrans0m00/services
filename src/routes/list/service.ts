@@ -27,6 +27,7 @@ import { useUserSettings } from "../../settings";
 import { Injectable } from "../../base/decorators";
 import { RouteSyncFactory } from "../sync/factory";
 import { sleep } from "../../utils/sleep";
+import { enrichRouteWithOSMSurface } from "../base/utils/surface";
 import { useAppsService } from "../../apps";
 import { useAppState } from "../../appstate";
 import { useUnitConverter } from "../../i18n";
@@ -1307,6 +1308,9 @@ export class RouteListService  extends IncyclistService implements IRouteList {
                 delete route.details.selectableSegments;
             }
         }
+
+        // Enrich surface data from OSM if missing (e.g. route imported while in manual mode)
+        this.verifySurfaceData(route)
     }
 
     protected verifyRouteCountry(route: Route) {
@@ -1316,11 +1320,43 @@ export class RouteListService  extends IncyclistService implements IRouteList {
                     this.db.save(route, false);
                 })
                 .catch(err => {
-                    this.logError(err,'verifyRouteCountry',{id:route.description.id, title:route.description.title})                    
+                    this.logError(err,'verifyRouteCountry',{id:route.description.id, title:route.description.title})
                 });
         }
     }
 
+    protected verifySurfaceData(route: Route) {
+        // Only enrich GPX routes (not video routes)
+        if (route.description?.hasVideo) return
+
+        const points = route.details?.points
+        if (!points?.length) return
+
+        // Skip if any point already has surface data
+        if (points.some(p => p.surface)) return
+
+        // Only enrich in auto mode
+        let mode = 'auto'
+        try {
+            mode = this.getUserSettings()?.get('preferences.roadFeel.mode', 'auto') ?? 'auto'
+        } catch {
+            // Settings not yet initialized – default to auto
+        }
+        if (mode !== 'auto') return
+        if (process.env.NODE_ENV === 'test') return
+
+        // Run enrichment async in background (don't block route load)
+        enrichRouteWithOSMSurface(points)
+            .then(() => {
+                // Only save if enrichment actually added surface data
+                if (points.some(p => p.surface)) {
+                    this.db.save(route, true)
+                }
+            })
+            .catch(err => {
+                this.logError(err, 'verifySurfaceData', { id: route.description?.id })
+            })
+    }
 
 
     protected selectList(route:Route):CardList<Route> {

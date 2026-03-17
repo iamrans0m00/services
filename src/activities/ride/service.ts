@@ -382,7 +382,7 @@ export class ActivityRideService extends IncyclistService {
     protected buildDashboardInfo(currentValues, avgMaxStats, display) {
 
 
-        const { distance, time, speed, power, slope, heartrate, cadence,distanceRemaining,timeRemaining,gear } = currentValues
+        const { distance, time, speed, power, slope, heartrate, cadence,distanceRemaining,timeRemaining,gear, surface } = currentValues
         const {speedDetails,powerDetails,elevationGain, heartrateDetails,cadenceDetails} = avgMaxStats
         const info = [];
         const [C,U] = this.getUnitConversionShortcuts()
@@ -420,6 +420,27 @@ export class ActivityRideService extends IncyclistService {
             info.push({ title: 'Gear', data: [{ value: gear }] });
         }
 
+        // Road feel surface column – shown when cycling mode is SIM
+        try {
+            const modeSettings = this.getDeviceConfiguration()?.getModeSettings?.()
+            if (modeSettings?.isSIM) {
+                const rfSettings = this.getUserSettings()?.get?.('preferences.roadFeel', null)
+                let surfaceValue: string | undefined
+
+                if (rfSettings?.mode === 'manual' && rfSettings?.surface) {
+                    // Manual mode: always show the user-selected surface
+                    surfaceValue = rfSettings.surface
+                } else {
+                    // Auto mode: show route surface, fall back to configured fallback
+                    surfaceValue = surface ?? rfSettings?.surface
+                }
+
+                const displaySurface = this.formatSurfaceName(surfaceValue)
+                info.push({ title: 'Surface', data: [{ value: displaySurface ?? '--' }] })
+            }
+        }
+        catch { /* device config not yet available */ }
+
         return info;
     }
 
@@ -435,7 +456,8 @@ export class ActivityRideService extends IncyclistService {
         const lap = this.current.lap
         const routeDistance = this.current.routeDistance
         const gear = this.current.deviceData?.gearStr
-        
+        const surface = this.current.position?.surface
+
         if (this.state!='active' ) {
             speed = 0
         }
@@ -452,7 +474,7 @@ export class ActivityRideService extends IncyclistService {
             )    
         }
 
-        return { position, distance, routeDistance, time, speed, power, slope, heartrate, cadence, timeRemaining, distanceRemaining,lap, gear };
+        return { position, distance, routeDistance, time, speed, power, slope, heartrate, cadence, timeRemaining, distanceRemaining,lap, gear, surface };
     }
 
     protected getAverageValues() {
@@ -1690,6 +1712,7 @@ export class ActivityRideService extends IncyclistService {
         return useDeviceRide()
     }
     // istanbul ignore next
+    @Injectable
     protected getDeviceConfiguration() {
         return useDeviceConfiguration()
     }
@@ -1718,7 +1741,20 @@ export class ActivityRideService extends IncyclistService {
         return useUnitConverter()
     }
 
-
+    protected formatSurfaceName(surface?: string): string|undefined {
+        if (!surface) return undefined
+        const SHORT_NAMES: Record<string, string> = {
+            Concrete:         'Road',
+            CattleGrid:       'Grid',
+            CobblestonesHard: 'Cobble',
+            CobblestonesSoft: 'Cobble+',
+            BrickRoad:        'Brick',
+            OffRoad:          'Dirt',
+            Gravel:           'Gravel',
+            WoodenBoards:     'Wood',
+        }
+        return SHORT_NAMES[surface] ?? surface
+    }
 
 
 }

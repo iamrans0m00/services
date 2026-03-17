@@ -11,6 +11,7 @@ module.exports = {
         //'^uuid$': require.resolve('uuid'),
         '^uuid$': '<rootDir>/test/uuid.ts',
     },
+    testEnvironment: './jest-environment-node-fixed.js',
     globalSetup: './jest-setup.js',
     testRegex: '^.+(\\.)?(test|spec)\\.(ts|js)?$',
     moduleFileExtensions: ['ts', 'js', 'json', 'node'],

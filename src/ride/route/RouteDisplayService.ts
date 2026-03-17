@@ -340,14 +340,6 @@ export class RouteDisplayService extends RideModeService {
         }
     }
 
-    /**
-     * Inject a position update for diagnostic/test purposes.
-     * Triggers the same surface-change detection as a real ride.
-     */
-    injectPosition(routeDistance: number): void {
-        this.updatePosition({ routeDistance } as any)
-    }
-
     protected  updatePosition(activityPos:ActivityUpdate): CurrentPosition {
 
         let currentRouteDistance
@@ -465,6 +457,14 @@ export class RouteDisplayService extends RideModeService {
 
     getCurrentRoute():Route {
         return this.currentRoute
+    }
+
+    /**
+     * Override the current route for diagnostic/test purposes.
+     * The caller is responsible for restoring the original route when done.
+     */
+    setCurrentRoute(route: Route): void {
+        this.currentRoute = route
     }
     
 

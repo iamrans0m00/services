@@ -314,18 +314,26 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
             const { key, shiftKey } = event;
 
             switch (key) {
-                case 'ArrowLeft': 
-                    this.backward();
+                case 'ArrowLeft':
+                    if (shiftKey) {
+                        this.adjustFrontGear(false);
+                    } else {
+                        this.backward();
+                    }
                     return;
                 case 'ArrowRight':
-                    this.forward();
+                    if (shiftKey) {
+                        this.adjustFrontGear(true);
+                    } else {
+                        this.forward();
+                    }
                     return
                 case 'ArrowUp':
                 case 'ArrowDown':
                     this.adjustPower(key==='ArrowUp', shiftKey)
                     return
             }
-            
+
         }
         catch(err) {
             this.logError(err,'onHotKey')
@@ -782,6 +790,32 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
         }
     }
 
+    getShiftingInfo(): { isNatural: boolean; hasFrontShift: boolean } {
+        try {
+            const device = this.getDeviceRide()?.getControlAdapter()
+            if (!device) return { isNatural: false, hasFrontShift: false }
+
+            const mode = this.getDeviceRide().getCyclingMode(device.udid) as CyclingMode
+            if (!mode?.isSIM?.()) return { isNatural: false, hasFrontShift: false }
+
+            const virtshiftMode = mode.getSetting('virtshift') as unknown as string
+            const isNatural = virtshiftMode === 'Natural'
+
+            if (!isNatural) return { isNatural: false, hasFrontShift: false }
+
+            // Front shift only available for 2x/3x drivetrains
+            const userSettings = useUserSettings()
+            const drivetrainConfig = userSettings.getValue('preferences.drivetrainConfig', { type: '1x' })
+            const hasFrontShift = drivetrainConfig.type === '2x' || drivetrainConfig.type === '3x'
+
+            return { isNatural, hasFrontShift }
+        }
+        catch(err) {
+            this.logError(err, 'getShiftingInfo')
+            return { isNatural: false, hasFrontShift: false }
+        }
+    }
+
 
 
     protected adjustCurrentStepDuration(time: number, newDuration: number) {
@@ -1097,11 +1131,18 @@ export class RideDisplayService extends IncyclistService implements ICurrentRide
             this.getRideModeService().sendUpdate({targetPowerDelta:inc} )
         }      
         else if (mode.isSIM() || mode.isResistance()) {
-            let gearDelta = inc/5 
-            if (Math.abs(gearDelta)>1) {
-                gearDelta = Math.sign(gearDelta)*5
+            const virtshiftMode = mode.getSetting('virtshift') as unknown as string
+            if (virtshiftMode === 'Natural') {
+                // Natural mode: each button press = exactly one gear shift
+                const gearDelta = Math.sign(inc)
+                this.getRideModeService().sendUpdate({gearDelta})
+            } else {
+                let gearDelta = inc/5
+                if (Math.abs(gearDelta)>1) {
+                    gearDelta = Math.sign(gearDelta)*5
+                }
+                this.getRideModeService().sendUpdate({gearDelta})
             }
-            this.getRideModeService().sendUpdate({gearDelta} )
         }
 
     }

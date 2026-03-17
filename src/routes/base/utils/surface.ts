@@ -1,20 +1,21 @@
 import { RoutePoint } from '../types'
 import { FileInfo, getBindings } from '../../../api'
 import { useUserSettings } from '../../../settings'
+import { useOverpassApi } from '../../../services/overpass/overpass'
 
 // ─── Surface entry from companion CSV ────────────────────────────────────────
 
 export interface SurfaceEntry {
     distance: number   // metres from start
-    surface: string    // RoadFeelSurface name (Road, Gravel, etc.)
+    surface: string    // RoadFeelSurface name (Concrete, Gravel, etc.)
 }
 
 // ─── Companion CSV parser ─────────────────────────────────────────────────────
 // Format: distance_m,surface   (first line may be a header)
 // Example:
-//   0,Road
+//   0,Concrete
 //   4200,Gravel
-//   6800,Road
+//   6800,Concrete
 
 export function parseSurfaceFile(content: string): SurfaceEntry[] {
     const lines = content.split(/\r?\n/).filter(l => l.trim() && !l.startsWith('#'))
@@ -77,35 +78,33 @@ export async function tryLoadCompanionSurface(
 
 // ─── OSM Overpass enrichment ──────────────────────────────────────────────────
 
-const OSM_OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
-
-// Map OSM surface tags → RoadFeelSurface names
+// Map OSM surface tags → RoadFeelSurface names (must match consts.ts enum keys)
 const OSM_SURFACE_MAP: Record<string, string> = {
-    asphalt: 'Road',
-    paved: 'Road',
-    concrete: 'Road',
-    tarmac: 'Road',
-    cobblestone: 'CobblestoneHard',
-    'cobblestone:flattened': 'CobblestoneEasy',
-    sett: 'CobblestoneEasy',
+    asphalt: 'Concrete',
+    paved: 'Concrete',
+    concrete: 'Concrete',
+    tarmac: 'Concrete',
+    cobblestone: 'CobblestonesHard',
+    'cobblestone:flattened': 'CobblestonesSoft',
+    sett: 'CobblestonesSoft',
     paving_stones: 'BrickRoad',
     bricks: 'BrickRoad',
     gravel: 'Gravel',
     compacted: 'Gravel',
-    fine_gravel: 'GravelLight',
-    unpaved: 'GravelDeep',
-    ground: 'GravelDeep',
-    dirt: 'GravelDeep',
-    earth: 'GravelDeep',
-    wood: 'WoodenPlanks',
-    boardwalk: 'WoodenPlanks',
+    fine_gravel: 'Gravel',
+    unpaved: 'OffRoad',
+    ground: 'OffRoad',
+    dirt: 'OffRoad',
+    earth: 'OffRoad',
+    wood: 'WoodenBoards',
+    boardwalk: 'WoodenBoards',
     ice: 'Ice',
-    snow: 'Snow',
+    snow: 'Ice',
 }
 
 export function osmTagToSurface(tag?: string): string {
-    if (!tag) return 'Road'
-    return OSM_SURFACE_MAP[tag.toLowerCase()] ?? 'Road'
+    if (!tag) return 'Concrete'
+    return OSM_SURFACE_MAP[tag.toLowerCase()] ?? 'Concrete'
 }
 
 function dist2(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -151,6 +150,11 @@ function findNearestWay(point: RoutePoint, ways: any[]): any {
     return bestDist < THRESHOLD ? bestWay : null
 }
 
+// Yield to the event loop so IPC / BLE messages are not starved during
+// the CPU-intensive nearest-way matching loop.
+const yieldToEventLoop = (): Promise<void> =>
+    new Promise(resolve => setTimeout(resolve, 0))
+
 // Query Overpass for all ways with surface tags inside the route's bounding box,
 // then stamp each RoutePoint with the surface of the nearest matching way.
 export async function enrichRouteWithOSMSurface(points: RoutePoint[]): Promise<void> {
@@ -168,34 +172,57 @@ export async function enrichRouteWithOSMSurface(points: RoutePoint[]): Promise<v
         + '(' + south + ',' + west + ',' + north + ',' + east + ');'
         + 'out geom;'
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 8_000)
-
     try {
-        const resp = await fetch(OSM_OVERPASS_URL, {
-            method: 'POST',
-            body: 'data=' + encodeURIComponent(query),
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            signal: controller.signal,
-        })
-        clearTimeout(timeoutId)
-        if (!resp.ok) return
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const json = await useOverpassApi().query(query, 8_000) as any
+        if (!json) return  // timeout or all mirrors failed
 
-        const json = await resp.json()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ways = (json.elements ?? []).filter((e: any) => e.type === 'way' && e.geometry?.length)
         if (!ways.length) return
 
+        // Sample at most one point per ~100 m of route distance to avoid running
+        // O(n_points × n_ways) on large routes (e.g. a 320 km gravel race returns
+        // thousands of points and hundreds of OSM ways → tens of millions of distance
+        // calculations that block the event loop for 30+ seconds).
+        // Surface changes operate at 100 m+ scale so the fidelity loss is negligible.
+        const SAMPLE_INTERVAL_M = 100
+        let lastSampledDist = -Infinity
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const samples: { point: RoutePoint; way: any }[] = []
+
+        for (let i = 0; i < points.length; i++) {
+            const point = points[i]
+            const dist = point.routeDistance ?? 0
+
+            if (dist - lastSampledDist >= SAMPLE_INTERVAL_M) {
+                lastSampledDist = dist
+                const nearest = findNearestWay(point, ways)
+                if (nearest) samples.push({ point, way: nearest })
+            }
+
+            // Yield every 50 iterations so BLE IPC messages are not queued up
+            if (i % 50 === 49) await yieldToEventLoop()
+        }
+
+        // Walk the full point list and stamp each point from the nearest sample
+        // using a simple forward scan (both arrays are sorted by routeDistance).
+        let sIdx = 0
         for (const point of points) {
-            const nearest = findNearestWay(point, ways)
-            if (nearest) {
-                point.surface = osmTagToSurface(nearest.tags?.surface)
+            const dist = point.routeDistance ?? 0
+            // Advance to the closest sample that hasn't passed this point yet
+            while (sIdx + 1 < samples.length &&
+                   Math.abs(dist - samples[sIdx + 1].point.routeDistance!) <=
+                   Math.abs(dist - samples[sIdx].point.routeDistance!)) {
+                sIdx++
+            }
+            if (samples[sIdx]) {
+                point.surface = osmTagToSurface(samples[sIdx].way.tags?.surface)
             }
         }
     } catch {
         // Overpass unavailable, network error, or timeout — silently ignore
-    } finally {
-        clearTimeout(timeoutId)
     }
 }
 

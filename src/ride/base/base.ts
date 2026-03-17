@@ -3,7 +3,7 @@ import { Observer } from "../../base/types";
 import { ActiveWorkoutLimit, useWorkoutList, useWorkoutRide } from "../../workouts";
 import { CurrentRideDisplayProps, ICurrentRideService, IRideModeService, IRideModeServiceDisplayProps } from "./types";
 import { IncyclistService } from "../../base/service";
-import { useDeviceRide } from "../../devices";
+import { useDeviceConfiguration, useDeviceRide } from "../../devices";
 import { Injectable } from "../../base/decorators";
 import { ActivityUpdate } from "../../activities/ride/types";
 import { ScreenShotInfo } from "../../activities";
@@ -225,13 +225,19 @@ export class RideModeService extends IncyclistService implements IRideModeServic
     }
 
     protected getDashboardColumns(): number {
-
-        
         const mode = this.getDeviceRide().getCyclingMode()
         const virtshift = mode?.getSetting('virtshift')
-        const enabled = virtshift!==undefined && virtshift!==null && virtshift!=='Disabled'
+        const hasVirtshift = virtshift !== undefined && virtshift !== null && virtshift !== 'Disabled'
 
-        return enabled ? 8 : 7;
+        let isSIM = false
+        try {
+            isSIM = useDeviceConfiguration()?.getModeSettings?.()?.isSIM === true
+        } catch {}
+
+        let cols = 7;
+        if (hasVirtshift) cols++;   // Gear column
+        if (isSIM) cols++;          // Surface column (road feel)
+        return cols;
     }
 
     @Injectable

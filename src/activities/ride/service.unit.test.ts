@@ -574,8 +574,115 @@ describe('ActivityRideService',()=>{
             service.init()
 
             const props = service.getDashboardDisplayProperties()
-            
+
             expect(props).toMatchSnapshot()
+        })
+
+        test('SIM mode auto with route surface shows formatted Surface column',()=>{
+            const route  = createFromJson(sydney as unknown as RouteApiDetail)
+
+            mockServices(service,{route,startSettings:{startPos:0,realityFactor:100,type:'Route'},ride})
+            service.init()
+
+            // Mock SIM mode
+            ;(service as any).getDeviceConfiguration = jest.fn(() => ({
+                getModeSettings: jest.fn().mockReturnValue({ isSIM: true })
+            }))
+
+            // Set a surface on the current position
+            ;(service as any).current = {
+                ...(service as any).current,
+                position: { ...(service as any).current?.position, surface: 'CobblestonesHard' }
+            }
+
+            const props = service.getDashboardDisplayProperties()
+            const surfaceItem = props.find(item => item.title === 'Surface')
+
+            expect(surfaceItem).toBeDefined()
+            expect(surfaceItem.data[0].value).toBe('Cobble Hard')
+        })
+
+        test('SIM mode manual always shows configured surface (overrides route)',()=>{
+            const route  = createFromJson(sydney as unknown as RouteApiDetail)
+
+            mockServices(service,{route,startSettings:{startPos:0,realityFactor:100,type:'Route'},ride})
+
+            // Override getUserSettings to return manual road feel config
+            ;(service as any).getUserSettings = jest.fn(() => ({
+                get: jest.fn((key:string, defValue:any) => {
+                    if (key === 'preferences.roadFeel') return { mode: 'manual', surface: 'Gravel', intensity: 100 }
+                    return defValue
+                })
+            }))
+
+            service.init()
+
+            // Mock SIM mode
+            ;(service as any).getDeviceConfiguration = jest.fn(() => ({
+                getModeSettings: jest.fn().mockReturnValue({ isSIM: true })
+            }))
+
+            // Route has a surface, but manual mode should override it
+            ;(service as any).current = {
+                ...(service as any).current,
+                position: { ...(service as any).current?.position, surface: 'Concrete' }
+            }
+
+            const props = service.getDashboardDisplayProperties()
+            const surfaceItem = props.find(item => item.title === 'Surface')
+
+            expect(surfaceItem).toBeDefined()
+            expect(surfaceItem.data[0].value).toBe('Gravel')
+        })
+
+        test('SIM mode auto without route surface falls back to configured fallback',()=>{
+            const route  = createFromJson(sydney as unknown as RouteApiDetail)
+
+            mockServices(service,{route,startSettings:{startPos:0,realityFactor:100,type:'Route'},ride})
+
+            // Override getUserSettings to return auto road feel config with fallback
+            ;(service as any).getUserSettings = jest.fn(() => ({
+                get: jest.fn((key:string, defValue:any) => {
+                    if (key === 'preferences.roadFeel') return { mode: 'auto', surface: 'Ice', intensity: 100 }
+                    return defValue
+                })
+            }))
+
+            service.init()
+
+            // Mock SIM mode
+            ;(service as any).getDeviceConfiguration = jest.fn(() => ({
+                getModeSettings: jest.fn().mockReturnValue({ isSIM: true })
+            }))
+
+            // No surface on position
+            ;(service as any).current = {
+                ...(service as any).current,
+                position: { ...(service as any).current?.position, surface: undefined }
+            }
+
+            const props = service.getDashboardDisplayProperties()
+            const surfaceItem = props.find(item => item.title === 'Surface')
+
+            expect(surfaceItem).toBeDefined()
+            expect(surfaceItem.data[0].value).toBe('Ice')
+        })
+
+        test('non-SIM mode does not include Surface column',()=>{
+            const route  = createFromJson(sydney as unknown as RouteApiDetail)
+
+            mockServices(service,{route,startSettings:{startPos:0,realityFactor:100,type:'Route'},ride})
+            service.init()
+
+            // Mock non-SIM mode
+            ;(service as any).getDeviceConfiguration = jest.fn(() => ({
+                getModeSettings: jest.fn().mockReturnValue({ isSIM: false })
+            }))
+
+            const props = service.getDashboardDisplayProperties()
+            const surfaceItem = props.find(item => item.title === 'Surface')
+
+            expect(surfaceItem).toBeUndefined()
         })
 
     })

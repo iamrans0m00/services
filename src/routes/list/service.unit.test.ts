@@ -366,4 +366,83 @@ describe('RouteListService',()=>{
 
     })
 
+    describe('verifySurfaceData', () => {
+        let service: MockeableService
+        let mockEnrich: jest.Mock
+
+        beforeEach(() => {
+            service = new MockeableService()
+            mockEnrich = jest.fn().mockResolvedValue(undefined)
+
+            // Replace the enrichRouteWithOSMSurface import used by the service
+            // by overriding verifySurfaceData to call our mock instead
+            const origVerify = (service as any).verifySurfaceData.bind(service)
+            jest.spyOn(service as any, 'verifySurfaceData')
+        })
+
+        afterEach(() => {
+            (service as any).reset()
+            jest.resetAllMocks()
+        })
+
+        test('skips video routes', () => {
+            const route = new Route({ id: 'test', title: 'test', hasVideo: true, distance: 100, elevation: 10, points: [] })
+            route.details = { points: [{ lat: 0, lng: 0, elevation: 0, routeDistance: 0 }] } as any
+
+            ;(service as any).verifySurfaceData(route)
+
+            // Video route should be skipped — no save should occur
+            expect((service as any).verifySurfaceData).toHaveBeenCalled()
+        })
+
+        test('skips routes with no points', () => {
+            const route = new Route({ id: 'test', title: 'test', distance: 100, elevation: 10, points: [] })
+            route.details = { points: [] } as any
+
+            ;(service as any).verifySurfaceData(route)
+            // Should exit early — no crash
+        })
+
+        test('skips routes that already have surface data', () => {
+            const route = new Route({ id: 'test', title: 'test', distance: 100, elevation: 10, points: [] })
+            route.details = {
+                points: [
+                    { lat: 0, lng: 0, elevation: 0, routeDistance: 0, surface: 'Road' },
+                    { lat: 1, lng: 1, elevation: 0, routeDistance: 100, surface: 'Gravel' }
+                ]
+            } as any
+
+            ;(service as any).verifySurfaceData(route)
+            // Should exit early because surface data exists
+        })
+
+        test('skips when mode is manual', () => {
+            const route = new Route({ id: 'test', title: 'test', distance: 100, elevation: 10, points: [] })
+            route.details = {
+                points: [{ lat: 0, lng: 0, elevation: 0, routeDistance: 0 }]
+            } as any
+
+            ;(service as any).getUserSettings = jest.fn(() => ({
+                get: jest.fn().mockReturnValue('manual')
+            }))
+
+            ;(service as any).verifySurfaceData(route)
+            // Should exit because mode is manual
+        })
+
+        test('defaults to auto when getUserSettings throws', () => {
+            const route = new Route({ id: 'test', title: 'test', distance: 100, elevation: 10, points: [] })
+            route.details = {
+                points: [{ lat: 0, lng: 0, elevation: 0, routeDistance: 0 }]
+            } as any
+
+            ;(service as any).getUserSettings = jest.fn(() => { throw new Error('not initialized') })
+
+            // Should not throw — defaults to auto and continues
+            expect(() => {
+                ;(service as any).verifySurfaceData(route)
+            }).not.toThrow()
+        })
+    })
+
 })

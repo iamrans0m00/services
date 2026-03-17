@@ -208,4 +208,227 @@ describe('RideDisplayService', () => {
 
     })
 
-})   
+    describe('Natural Shifting', () => {
+
+        let service: RideDisplayService
+        let sendUpdate: jest.Mock
+
+        const createMockMode = (props: { isSIM?: boolean; isERG?: boolean; virtshift?: string; name?: string }) => ({
+            isSIM: jest.fn().mockReturnValue(props.isSIM ?? true),
+            isERG: jest.fn().mockReturnValue(props.isERG ?? false),
+            isResistance: jest.fn().mockReturnValue(false),
+            getSetting: jest.fn((key) => {
+                if (key === 'virtshift') return props.virtshift ?? 'Disabled'
+                return undefined
+            }),
+            getName: jest.fn().mockReturnValue(props.name ?? 'Smart Trainer'),
+        })
+
+        const setupMocks = (s: any, mode: any, userSettingsOverrides?: any) => {
+            sendUpdate = jest.fn()
+            const adapter = { udid: 'test-udid' }
+
+            Inject('DeviceRide', {
+                sendUpdate: jest.fn(),
+                getControlAdapter: jest.fn().mockReturnValue(adapter),
+                getCyclingMode: jest.fn().mockReturnValue(mode),
+            })
+
+            // Mock useUserSettings singleton's getValue
+            const { useUserSettings } = require('../../settings')
+            const us = useUserSettings()
+            us.getValue = jest.fn((key, def) => {
+                if (key === 'preferences.drivetrainConfig') return userSettingsOverrides?.drivetrainConfig ?? def
+                return def
+            })
+
+            s.getRideModeService = jest.fn().mockReturnValue({ sendUpdate })
+        }
+
+        const cleanupMocks = (s: any) => {
+            s.reset()
+            jest.resetAllMocks()
+            Inject('DeviceRide', null)
+            Inject('UserSettings', null)
+        }
+
+        beforeEach(() => {
+            Inject('UserSettings', null)
+            service = new RideDisplayService()
+        })
+
+        afterEach(() => {
+            cleanupMocks(service)
+        })
+
+        describe('devicePowerUp', () => {
+
+            test('Natural mode clamps gearDelta to +1 for inc=5', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                ;(service as any).devicePowerUp(5)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ gearDelta: 1 })
+            })
+
+            test('Natural mode clamps gearDelta to -1 for inc=-5', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                ;(service as any).devicePowerUp(-5)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ gearDelta: -1 })
+            })
+
+            test('Natural mode sends gearDelta=1 for inc=1', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                ;(service as any).devicePowerUp(1)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ gearDelta: 1 })
+            })
+
+            test('non-Natural SIM mode sends gearDelta based on inc/5 formula', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Mixed' })
+                setupMocks(service, mode)
+
+                ;(service as any).devicePowerUp(5)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ gearDelta: 1 })
+            })
+
+            test('non-Natural SIM mode sends gearDelta=5 for large inc', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Mixed' })
+                setupMocks(service, mode)
+
+                ;(service as any).devicePowerUp(25)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ gearDelta: 5 })
+            })
+        })
+
+        describe('deviceFrontShift', () => {
+
+            test('sends frontDelta in SIM mode', () => {
+                const mode = createMockMode({ isSIM: true })
+                setupMocks(service, mode)
+
+                ;(service as any).deviceFrontShift(1)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ frontDelta: 1 })
+            })
+
+            test('sends negative frontDelta for downshift', () => {
+                const mode = createMockMode({ isSIM: true })
+                setupMocks(service, mode)
+
+                ;(service as any).deviceFrontShift(-1)
+
+                expect(sendUpdate).toHaveBeenCalledWith({ frontDelta: -1 })
+            })
+
+            test('does not send in non-SIM mode', () => {
+                const mode = createMockMode({ isSIM: false })
+                setupMocks(service, mode)
+
+                ;(service as any).deviceFrontShift(1)
+
+                expect(sendUpdate).not.toHaveBeenCalled()
+            })
+        })
+
+        describe('getShiftingInfo', () => {
+
+            test('returns isNatural=true for Natural mode', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode, { drivetrainConfig: { type: '1x' } })
+
+                const info = service.getShiftingInfo()
+
+                expect(info.isNatural).toBe(true)
+            })
+
+            test('returns hasFrontShift=false for 1x drivetrain', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode, { drivetrainConfig: { type: '1x' } })
+
+                const info = service.getShiftingInfo()
+
+                expect(info.hasFrontShift).toBe(false)
+            })
+
+            test('returns hasFrontShift=true for 2x drivetrain', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode, { drivetrainConfig: { type: '2x' } })
+
+                const info = service.getShiftingInfo()
+
+                expect(info.hasFrontShift).toBe(true)
+            })
+
+            test('returns hasFrontShift=true for 3x drivetrain', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode, { drivetrainConfig: { type: '3x' } })
+
+                const info = service.getShiftingInfo()
+
+                expect(info.hasFrontShift).toBe(true)
+            })
+
+            test('returns isNatural=false for non-Natural mode', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Mixed' })
+                setupMocks(service, mode)
+
+                const info = service.getShiftingInfo()
+
+                expect(info.isNatural).toBe(false)
+                expect(info.hasFrontShift).toBe(false)
+            })
+
+            test('returns isNatural=false for non-SIM mode', () => {
+                const mode = createMockMode({ isSIM: false, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                const info = service.getShiftingInfo()
+
+                expect(info.isNatural).toBe(false)
+            })
+        })
+
+        describe('onArrowKey front shifting', () => {
+
+            test('Shift+ArrowLeft calls adjustFrontGear(false)', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                const spy = jest.spyOn(service, 'adjustFrontGear')
+                service.onArrowKey({ key: 'ArrowLeft', shiftKey: true })
+
+                expect(spy).toHaveBeenCalledWith(false)
+            })
+
+            test('Shift+ArrowRight calls adjustFrontGear(true)', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                const spy = jest.spyOn(service, 'adjustFrontGear')
+                service.onArrowKey({ key: 'ArrowRight', shiftKey: true })
+
+                expect(spy).toHaveBeenCalledWith(true)
+            })
+
+            test('ArrowLeft without shift does not call adjustFrontGear', () => {
+                const mode = createMockMode({ isSIM: true, virtshift: 'Natural' })
+                setupMocks(service, mode)
+
+                const spy = jest.spyOn(service, 'adjustFrontGear')
+                service.onArrowKey({ key: 'ArrowLeft', shiftKey: false })
+
+                expect(spy).not.toHaveBeenCalled()
+            })
+        })
+    })
+
+})

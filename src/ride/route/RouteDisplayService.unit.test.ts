@@ -132,6 +132,62 @@ describe( 'RouteDisplayService', () => {
 
         })
 
+        test('emits surface-change when position surface changes',async ()=>{
+            const startSettings = { ...defaultStartSettings}
+            setupMocks(service,{mockRideService:true,startSettings})
+
+            // First update — both prevSurface and position.surface are undefined,
+            // so no surface-change is emitted (no change)
+            service.onActivityUpdate({time:1, speed:36, routeDistance:10,distance:10},{distance:10, power:100})
+            expect(service.emit).not.toHaveBeenCalledWith('surface-change', expect.anything())
+            jest.clearAllMocks()
+
+            // Stamp surface on the route point so updatePosition picks it up.
+            // We intercept updatePosition to inject surface data.
+            const origUpdate = service['updatePosition'].bind(service)
+            service['updatePosition'] = (...args) => {
+                const pos = origUpdate(...args)
+                if (pos) pos.surface = 'Gravel'
+                return pos
+            }
+
+            service.onActivityUpdate({time:2, speed:36, routeDistance:20,distance:10},{distance:10, power:100})
+            expect(service.emit).toHaveBeenCalledWith('surface-change', 'Gravel')
+            jest.clearAllMocks()
+
+            // Same surface — should NOT emit again
+            service.onActivityUpdate({time:3, speed:36, routeDistance:30,distance:10},{distance:10, power:100})
+            expect(service.emit).not.toHaveBeenCalledWith('surface-change', expect.anything())
+            jest.clearAllMocks()
+
+            // Surface changes to Road
+            service['updatePosition'] = (...args) => {
+                const pos = origUpdate(...args)
+                if (pos) pos.surface = 'Road'
+                return pos
+            }
+            service.onActivityUpdate({time:4, speed:36, routeDistance:40,distance:10},{distance:10, power:100})
+            expect(service.emit).toHaveBeenCalledWith('surface-change', 'Road')
+        })
+
+        test('emits surface-change on ride start via onStarted',async ()=>{
+            const startSettings = { ...defaultStartSettings}
+            setupMocks(service,{mockRideService:true,startSettings})
+
+            // Stamp initial surface
+            service['position'] = { ...service['position'], surface: 'CobblestoneHard' }
+
+            // Mock dependencies that onStarted calls
+            const mockActiveRides = { init: jest.fn().mockReturnValue({ on: jest.fn() }), stop: jest.fn() }
+            service['getActiveRides'] = jest.fn().mockReturnValue(mockActiveRides)
+            service['getAppInfo'] = jest.fn().mockReturnValue({ session: 'test' })
+            service['sendUpdate'] = jest.fn()
+
+            service.onStarted()
+
+            expect(service.emit).toHaveBeenCalledWith('surface-change', 'CobblestoneHard')
+        })
+
         test('strange values',async ()=>{
             const startSettings = { ...defaultStartSettings, startPos: 3785, loopOverwrite: true}
             setupMocks(service,{mockRideService:true,startSettings})
