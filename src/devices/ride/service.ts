@@ -1501,13 +1501,14 @@ export class DeviceRideService  extends IncyclistService{
         await this.waitForUpdateFinish()
 
         if (hadGearChange) {
-            
+
             const t = targets[0]
-            const gearStr = t?.adapter?.getCyclingMode().getData().gearStr
+            const modeData = t?.adapter?.getCyclingMode().getData()
+            const gearStr = modeData?.gearStr
             if (gearStr) {
                 this.data.gearStr = gearStr
-
-                this.emit('gear-change', this.data.gearStr)
+                this.data.gearInfo = modeData.gearInfo
+                this.emit('gear-change', { gearStr, gearInfo: modeData.gearInfo })
             }
             this.logEvent({message:'gear change confirmed',gear:gearStr, duration:Date.now()-tsStart})
         }

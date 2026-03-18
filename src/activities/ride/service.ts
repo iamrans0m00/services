@@ -416,10 +416,6 @@ export class ActivityRideService extends IncyclistService {
         info.push({ title: 'Heartrate', data: [{ value: formatNumber(heartrate, 0), unit: 'bpm' }, heartrateDetails], dataState: this.current.dataState?.heartrate });
         info.push({ title: 'Cadence', data: [{ value: formatNumber(cadence, 0), unit: 'rpm' }, cadenceDetails], dataState: this.current.dataState?.cadence });
 
-        if (gear) {
-            info.push({ title: 'Gear', data: [{ value: gear }] });
-        }
-
         // Road feel surface column – shown when cycling mode is SIM
         try {
             const modeSettings = this.getDeviceConfiguration()?.getModeSettings?.()
@@ -456,6 +452,7 @@ export class ActivityRideService extends IncyclistService {
         const lap = this.current.lap
         const routeDistance = this.current.routeDistance
         const gear = this.current.deviceData?.gearStr
+        const gearInfo = this.current.deviceData?.gearInfo
         const surface = this.current.position?.surface
 
         if (this.state!='active' ) {
@@ -474,7 +471,7 @@ export class ActivityRideService extends IncyclistService {
             )    
         }
 
-        return { position, distance, routeDistance, time, speed, power, slope, heartrate, cadence, timeRemaining, distanceRemaining,lap, gear, surface };
+        return { position, distance, routeDistance, time, speed, power, slope, heartrate, cadence, timeRemaining, distanceRemaining,lap, gear, gearInfo, surface };
     }
 
     protected getAverageValues() {
@@ -1030,11 +1027,18 @@ export class ActivityRideService extends IncyclistService {
         this.current.position = position
     }
 
-    protected onGearChange(gearStr:string) {
+    protected onGearChange(gearData: string | { gearStr: string; gearInfo?: any }) {
         if (!this.current.deviceData)
             this.current.deviceData = {}
-        this.current.deviceData.gearStr = gearStr
-        this.emit('data', {gear: gearStr})
+
+        if (typeof gearData === 'string') {
+            this.current.deviceData.gearStr = gearData
+            this.emit('data', { gear: gearData })
+        } else {
+            this.current.deviceData.gearStr = gearData.gearStr
+            this.current.deviceData.gearInfo = gearData.gearInfo
+            this.emit('data', { gear: gearData.gearStr, gearInfo: gearData.gearInfo })
+        }
     }
 
     protected onDeviceData(data:DeviceData) {
